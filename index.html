@@ -528,6 +528,896 @@
   <div class="modal">
     <div class="icon">✅</div>
     <h3>Richiesta inviata!</h3>
+    <p>La tua richiesta è stata inviata all'ufficio.<br><br>Le richieste verranno evase entro una settimana.</p>
+    <button class="close-modal" onclick="closeModal()">Chiudi</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+// ============================================================
+// CONFIGURAZIONE
+// ============================================================
+const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwHyKVuDFKHwhnzAJFkHWrqJpsoTwOjVN6U1jFGMK1PEcXnRwSgDPWLQKG5F7SDpKs/exec';
+// ============================================================
+
+const PRODUCTS = [
+  { name: 'ALCOOL', risto: false },
+  { name: 'ALCOR Disinfettante superfici 0,75', risto: true },
+  { name: 'AMMONIACA', risto: false },
+  { name: 'ASC.MANI EUROCOM Z TORK', risto: false },
+  { name: 'ASC.MANI piegati a V Realcarta', risto: false },
+  { name: 'BOBINA 800 STRAPPI', risto: false },
+  { name: 'CANDEGGINA PLUS 2LT', risto: false },
+  { name: 'CARTA IGIENICA INTERCALATA', risto: false },
+  { name: 'CARTA IGIENICA MINI JUMBO', risto: false },
+  { name: 'CLEAN CREMA LT 1', risto: true },
+  { name: 'Clean Brill Brillantante 5LT', risto: true },
+  { name: 'Clean Cucina', risto: true },
+  { name: 'Clean Forno 0,75', risto: true },
+  { name: 'DES Disincrostante 5LT', risto: true },
+  { name: 'Fast & Go', risto: false },
+  { name: 'Fast & Go Piatti 5LT', risto: true },
+  { name: 'GUANTI MONOUSO', risto: false },
+  { name: 'GUANTI NERI', risto: true },
+  { name: 'GUANTI EXTREME', risto: true },
+  { name: 'KERADET', risto: false },
+  { name: 'MANICO LEGNO/FERRO', risto: false },
+  { name: 'MOCIO 20 FC', risto: false },
+  { name: 'MOCIO 30 FC', risto: false },
+  { name: 'PALETTA alzaimmondizia', risto: false },
+  { name: 'PANNI ANTISTATICI', risto: false },
+  { name: 'PANNO VILEDA CLASSICO', risto: false },
+  { name: 'PANNO VILEDA MICROFIBRA', risto: false },
+  { name: 'PARCHETTO-CARE', risto: false },
+  { name: 'PARCHETTO-CLEAN', risto: false },
+  { name: 'PATRONAL – MELA', risto: false },
+  { name: 'POWER-FIX GEL', risto: false },
+  { name: 'RICAMBIO PIUMINO (SWIFER)', risto: false },
+  { name: 'SACCHI 82 X 110 gr70', risto: true },
+  { name: 'SACCHI BIDONE 72X110 GIALLI', risto: true },
+  { name: 'SACCHI BIDONE 72X110', risto: false },
+  { name: 'SACCHI PATT. 50X60', risto: false },
+  { name: 'SANIKAL', risto: false },
+  { name: 'SAPONE SCHIUMA', risto: false },
+  { name: 'SCOPA Tonkita impresa', risto: false },
+  { name: 'SECCHIO + STRIZ. PER MOCIO', risto: false },
+  { name: 'SGRAS. MARSIGLIA', risto: false },
+  { name: 'SPUGNE VERDI GIALLE GRANDI', risto: false },
+  { name: 'Spugne zincate', risto: true },
+  { name: 'Stovimat Bar kg 6', risto: true },
+  { name: 'Stovit wash special 5LT', risto: true },
+  { name: 'TORNADO', risto: false },
+  { name: 'VERIPROP', risto: false },
+  { name: 'Vigor Solid (solido lavastoviglie)', risto: true },
+];
+
+let quantities = {}; // name -> qty
+let notes = {};      // name -> note
+
+function renderProducts() {
+  const list = document.getElementById('productList');
+  list.innerHTML = '';
+  PRODUCTS.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'product-item';
+    div.id = 'prod-' + i;
+    div.innerHTML = `
+      <div class="product-name">
+        ${p.name}
+        ${p.risto ? '<span class="risto-tag">RISTO</span>' : ''}
+      </div>
+      <div class="qty-controls">
+        <button class="qty-btn" onclick="changeQty(${i}, -1, event)">−</button>
+        <span class="qty-value" id="qty-${i}">0</span>
+        <button class="qty-btn" onclick="changeQty(${i}, 1, event)">+</button>
+      </div>
+    `;
+    // Note field
+    const noteDiv = document.createElement('div');
+    noteDiv.className = 'note-field';
+    noteDiv.innerHTML = `<input type="text" placeholder="Note (opzionale)" oninput="setNote(${i}, this.value)">`;
+    div.appendChild(noteDiv);
+
+    // Tap on item row = +1
+    div.addEventListener('click', (e) => {
+      if (e.target.closest('.qty-btn') || e.target.closest('.note-field')) return;
+      changeQty(i, 1, e);
+    });
+
+    list.appendChild(div);
+  });
+}
+
+function changeQty(i, delta, e) {
+  if (e) e.stopPropagation();
+  const name = PRODUCTS[i].name;
+  quantities[name] = Math.max(0, (quantities[name] || 0) + delta);
+  document.getElementById('qty-' + i).textContent = quantities[name];
+  const item = document.getElementById('prod-' + i);
+  if (quantities[name] > 0) item.classList.add('active');
+  else item.classList.remove('active');
+  updateCount();
+}
+
+function setNote(i, val) {
+  notes[PRODUCTS[i].name] = val;
+}
+
+function updateCount() {
+  let count = 0;
+  Object.values(quantities).forEach(q => { if (q > 0) count++; });
+  // custom
+  document.querySelectorAll('.custom-row').forEach(row => {
+    const name = row.querySelector('.custom-name').value.trim();
+    const qty = parseInt(row.querySelector('.qty-input').value) || 0;
+    if (name && qty > 0) count++;
+  });
+  document.getElementById('countDisplay').textContent = count;
+}
+
+// Custom rows
+let customCount = 0;
+function addCustomRow() {
+  customCount++;
+  const id = 'custom-' + customCount;
+  const div = document.createElement('div');
+  div.className = 'custom-row';
+  div.id = id;
+  div.innerHTML = `
+    <input type="text" class="custom-name" placeholder="Nome prodotto" oninput="updateCount()">
+    <input type="number" class="qty-input" placeholder="Qtà" min="0" value="" oninput="updateCount()">
+    <input type="text" style="flex:0.8;min-width:70px;padding:9px 10px;border:1.5px solid #d1d5db;border-radius:9px;font-family:inherit;font-size:13px;background:#f4f9f6;" placeholder="Note" oninput="">
+    <button class="remove-btn" onclick="removeCustomRow('${id}')">✕</button>
+  `;
+  document.getElementById('customProducts').appendChild(div);
+  div.querySelector('.custom-name').focus();
+}
+
+function removeCustomRow(id) {
+  document.getElementById(id).remove();
+  updateCount();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function sendForm() {
+  const cantiere = document.getElementById('cantiere').value.trim();
+  const operatore = document.getElementById('operatore').value.trim();
+
+  if (!cantiere || !operatore) {
+    showToast('⚠️ Inserisci struttura e operatore');
+    return;
+  }
+
+  // Build products list
+  const selectedProducts = [];
+  PRODUCTS.forEach(p => {
+    const qty = quantities[p.name] || 0;
+    if (qty > 0) {
+      selectedProducts.push({ name: p.name, qty, note: notes[p.name] || '', risto: p.risto });
+    }
+  });
+
+  // Custom products
+  document.querySelectorAll('.custom-row').forEach(row => {
+    const name = row.querySelector('.custom-name').value.trim();
+    const qty = parseInt(row.querySelector('.qty-input').value) || 0;
+    const noteEl = row.querySelectorAll('input')[2];
+    const note = noteEl ? noteEl.value.trim() : '';
+    if (name && qty > 0) {
+      selectedProducts.push({ name, qty, note, risto: false, custom: true });
+    }
+  });
+
+  if (selectedProducts.length === 0) {
+    showToast('⚠️ Seleziona almeno un prodotto');
+    return;
+  }
+
+  const btn = document.getElementById('sendBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  const payload = {
+    cantiere,
+    operatore,
+    data: new Date().toLocaleDateString('it-IT'),
+    products: selectedProducts
+  };
+
+  try {
+    if (APPS_SCRIPT_URL === 'INSERISCI_QUI_URL_APPS_SCRIPT') {
+      await new Promise(r => setTimeout(r, 1500));
+    } else {
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+    // Download PDF locale
+    downloadPDF(payload);
+    document.getElementById('modalOverlay').classList.add('show');
+  } catch (err) {
+    showToast('❌ Errore di rete. Riprova.');
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function downloadPDF(payload) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const green = [45, 106, 79];
+  const lightGreen = [240, 250, 243];
+  const white = [255, 255, 255];
+
+  // Titolo
+  doc.setFontSize(18);
+  doc.setTextColor(...green);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RICHIESTA PRODOTTI', 105, 20, { align: 'center' });
+
+  // Sottotitolo
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(64, 145, 108);
+  doc.text('coompany& – cooperativa sociale', 105, 28, { align: 'center' });
+
+  // Info
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 30, 30);
+  doc.text(`Data: ${payload.data}   |   Struttura: ${payload.cantiere}   |   Operatore: ${payload.operatore}`, 14, 40);
+
+  // Linea separatrice
+  doc.setDrawColor(...green);
+  doc.setLineWidth(0.5);
+  doc.line(14, 44, 196, 44);
+
+  // Tabella
+  let y = 52;
+  const colWidths = [110, 25, 47];
+  const headers = ['PRODOTTO', 'QUANTITÀ', 'NOTE'];
+  const rowH = 8;
+
+  // Header tabella
+  doc.setFillColor(...green);
+  doc.rect(14, y, 182, rowH, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  let x = 14;
+  headers.forEach((h, i) => {
+    doc.text(h, x + 3, y + 5.5);
+    x += colWidths[i];
+  });
+  y += rowH;
+
+  // Righe prodotti
+  doc.setFont('helvetica', 'normal');
+  payload.products.forEach((p, idx) => {
+    if (y > 270) { doc.addPage(); y = 20; }
+    const bg = idx % 2 === 0 ? white : lightGreen;
+    doc.setFillColor(...bg);
+    doc.rect(14, y, 182, rowH, 'F');
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(9);
+    let x = 14;
+    const name = p.name + (p.custom ? ' ★' : '');
+    // Tronca nome se troppo lungo
+    const truncated = name.length > 48 ? name.substring(0, 48) + '…' : name;
+    doc.text(truncated, x + 3, y + 5.5); x += colWidths[0];
+    doc.setFont('helvetica', 'bold');
+    doc.text(String(p.qty), x + 3, y + 5.5); x += colWidths[1];
+    doc.setFont('helvetica', 'normal');
+    doc.text(p.note || '', x + 3, y + 5.5);
+    y += rowH;
+  });
+
+  // Bordo tabella
+  doc.setDrawColor(...green);
+  doc.setLineWidth(0.3);
+  doc.rect(14, 52, 182, y - 52);
+
+  // Footer
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.setFont('helvetica', 'italic');
+  doc.text(`★ = prodotto aggiunto manualmente   |   Totale prodotti: ${payload.products.length}`, 14, y + 8);
+
+  // Scritta evase
+  doc.setFontSize(10);
+  doc.setTextColor(...green);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Le tue richieste verranno evase entro una settimana.', 14, y + 18);
+
+  // Download
+  const fileName = `Richiesta_${payload.cantiere.replace(/\s+/g,'-')}_${payload.operatore.replace(/\s+/g,'-')}_${payload.data.replace(/\//g,'-')}.pdf`;
+  doc.save(fileName);
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+  // Reset
+  quantities = {};
+  notes = {};
+  renderProducts();
+  document.querySelectorAll('.custom-row').forEach(r => r.remove());
+  document.getElementById('cantiere').value = '';
+  document.getElementById('operatore').value = '';
+  updateCount();
+}
+
+// Init
+renderProducts();
+</script>
+</body>
+</html>
+
+Il giorno gio 4 giu 2026 alle ore 14:19 Segreteria Coompany& <segreteriacoompany@gmail.com> ha scritto:
+https://segreteriacoompany.github.io/Prodotti-Pulizie/
+Angelica Mancia
+
+Segreteria 
+Coompany & Soc. Coop. Soc.
+Tel. 0131-481443
+cell. 347-4450532
+
+In ottemperanza al D.lgs. 196/03 e al Regolamento UE 2016/679 in materia di protezione dei dati personali, tutte le informazioni contenute in questo messaggio, sono destinate unicamente alle persone/aziende in indirizzo, e le informazioni in essa contenute, incluso ogni allegato, sono di carattere confidenziale e possono essere legalmente riservate. Sono destinate ad uso esclusivo del ricevente ed ogni divulgazione, copia, distribuzione o riferimento è proibito e può essere considerato illegale. Se tale messaggio è stato ricevuto per errore, il mittente deve esserne prontamente avvisato ed il messaggio deve essere distrutto, compreso ogni allegato presente. La trasmissione via posta elettronica non può essere ritenuta sicura o priva di errori, in quanto le informazioni potrebbero essere intercettate, danneggiate, smarrite, distrutte, arrivare in ritardo o incomplete, oppure contenere virus informatici. Per queste ragioni il mittente non si ritiene responsabile per errori od omissioni nel contenuto di questo messaggio che deriva da una trasmissione via posta elettronica.
+
+
+Il giorno gio 4 giu 2026 alle ore 14:16 Rida Nadif <nadifrida@gmail.com> ha scritto:
+
+
+---------- Forwarded message ---------
+Da: Rida Nadif <nadifrida@gmail.com>
+Date: gio 4 giu 2026 alle ore 14:13
+Subject:
+To: <segreteria@coompany.it>
+
+
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Richiesta Prodotti – Coompany</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #2d6a4f;
+    --green-light: #40916c;
+    --green-pale: #d8f3dc;
+    --green-mid: #b7e4c7;
+    --bg: #f4f9f6;
+    --white: #ffffff;
+    --text: #1b1b1b;
+    --text-muted: #6b7280;
+    --border: #d1d5db;
+    --radius: 14px;
+    --shadow: 0 2px 12px rgba(45,106,79,0.10);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+
+  header {
+    background: #ffffff;
+    color: var(--text);
+    padding: 14px 20px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+    border-bottom: 3px solid var(--green);
+  }
+
+  header .logo {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+  header .logo .part-dark { color: #2b2b2b; }
+  header .logo .part-green { color: #3a9a3e; }
+  header .logo-sub {
+    font-size: 10px;
+    color: #3a9a3e;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 1px;
+  }
+  header .subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  .container { max-width: 640px; margin: 0 auto; padding: 0 16px; }
+
+  /* Operatore form */
+  .info-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin: 20px 0 16px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--green-pale);
+  }
+
+  .info-card h2 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .field-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .field {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 15px;
+    background: var(--bg);
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+
+  .field input:focus {
+    outline: none;
+    border-color: var(--green-light);
+    background: white;
+  }
+
+  /* Section label */
+  .section-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--green);
+    margin: 22px 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--green-pale);
+  }
+
+  /* Badge RISTO */
+  .risto-tag {
+    display: inline-block;
+    background: var(--green-pale);
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    vertical-align: middle;
+    margin-left: 5px;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.5px;
+  }
+
+  /* Product list */
+  .product-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .product-item {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    box-shadow: var(--shadow);
+    border: 1.5px solid transparent;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .product-item:active { transform: scale(0.98); }
+
+  .product-item.active {
+    border-color: var(--green-light);
+    background: #f0faf3;
+  }
+
+  .product-name {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+
+  .qty-controls {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--bg);
+    border-radius: 30px;
+    overflow: hidden;
+    border: 1.5px solid var(--border);
+    flex-shrink: 0;
+    transition: border-color 0.2s;
+  }
+
+  .product-item.active .qty-controls {
+    border-color: var(--green-light);
+    background: white;
+  }
+
+  .qty-btn {
+    background: none;
+    border: none;
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--green);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .qty-btn:active { background: var(--green-pale); }
+
+  .qty-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    min-width: 28px;
+    text-align: center;
+    color: var(--text);
+  }
+
+  .note-field {
+    margin-top: 8px;
+    display: none;
+  }
+
+  .product-item.active .note-field { display: block; }
+
+  .note-field input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    background: white;
+    color: var(--text);
+  }
+  .note-field input:focus { outline: none; border-color: var(--green-light); }
+
+  /* Custom products */
+  .custom-products { display: flex; flex-direction: column; gap: 8px; }
+
+  .custom-row {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    box-shadow: var(--shadow);
+    border: 1.5px solid var(--green-pale);
+  }
+
+  .custom-row input {
+    flex: 1;
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 9px;
+    font-family: inherit;
+    font-size: 14px;
+    background: var(--bg);
+  }
+  .custom-row input:focus { outline: none; border-color: var(--green-light); background: white; }
+
+  .custom-row input.qty-input {
+    width: 60px;
+    flex: 0 0 60px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-weight: 600;
+  }
+
+  .remove-btn {
+    background: none;
+    border: none;
+    color: #e57373;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .add-custom-btn {
+    background: white;
+    border: 2px dashed var(--green-light);
+    color: var(--green);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px;
+    border-radius: var(--radius);
+    width: 100%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 4px;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .add-custom-btn:active { background: var(--green-pale); }
+
+  /* Summary bar */
+  .summary-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: white;
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+    z-index: 200;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+  }
+
+  .summary-bar .inner {
+    max-width: 640px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .selection-count {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .selection-count strong {
+    color: var(--green);
+    font-size: 15px;
+  }
+
+  .send-btn {
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 26px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+    white-space: nowrap;
+  }
+  .send-btn:active { background: var(--green-light); transform: scale(0.97); }
+  .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+  /* Space for fixed bar */
+  .bottom-space { height: 80px; }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: white;
+    border-radius: 20px;
+    padding: 28px 24px;
+    max-width: 380px;
+    width: 100%;
+    text-align: center;
+    transform: scale(0.9);
+    transition: transform 0.25s;
+  }
+  .modal-overlay.show .modal { transform: scale(1); }
+
+  .modal .icon { font-size: 52px; margin-bottom: 14px; }
+  .modal h3 { font-size: 20px; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+  .modal p { font-size: 14px; color: var(--text-muted); line-height: 1.5; }
+  .modal .close-modal {
+    margin-top: 20px;
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 30px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  /* Loading */
+  .send-btn .spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .send-btn.loading .spinner { display: block; }
+  .send-btn.loading .btn-text { display: none; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--green);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 30px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 400;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 400px) {
+    .product-name { font-size: 14px; }
+    header .logo { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="container">
+    <div class="logo">
+      <span class="part-dark">coompa</span><span class="part-green">ny&</span>
+    </div>
+    <div class="logo-sub">cooperativa sociale</div>
+    <div class="subtitle">📋 Richiesta Prodotti Pulizie</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Info operatore -->
+  <div class="info-card">
+    <h2>📋 Informazioni</h2>
+    <div class="field-row">
+      <div class="field">
+        <label>Struttura</label>
+        <input type="text" id="cantiere" placeholder="Es. Volta, Risto..." autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Operatore</label>
+        <input type="text" id="operatore" placeholder="Il tuo nome" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <!-- Prodotti standard -->
+  <div class="section-label">Prodotti</div>
+  <div class="product-list" id="productList"></div>
+
+  <!-- Prodotti personalizzati -->
+  <div class="section-label" style="margin-top:24px;">Aggiungi prodotti</div>
+  <div class="custom-products" id="customProducts"></div>
+  <button class="add-custom-btn" onclick="addCustomRow()">
+    ＋ Aggiungi prodotto
+  </button>
+
+  <div class="bottom-space"></div>
+</div>
+
+<!-- Summary bar fissa -->
+<div class="summary-bar">
+  <div class="inner">
+    <div class="selection-count">
+      <strong id="countDisplay">0</strong> prodotti selezionati
+    </div>
+    <button class="send-btn" id="sendBtn" onclick="sendForm()">
+      <span class="btn-text">📤 Invia</span>
+      <div class="spinner"></div>
+    </button>
+  </div>
+</div>
+
+<!-- Modal conferma -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="icon">✅</div>
+    <h3>Richiesta inviata!</h3>
     <p>La tua richiesta è stata inviata all'ufficio.<br><br>Il personale la prenderà in carico al più presto.</p>
     <button class="close-modal" onclick="closeModal()">Chiudi</button>
   </div>
