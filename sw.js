@@ -1,6 +1,6 @@
 // Service Worker - Coompany& Richiesta Prodotti
 // Incrementa CACHE_NAME ad ogni modifica dei file per forzare l'aggiornamento della cache sui telefoni.
-const CACHE_NAME = 'coompany-richiesta-prodotti-v1';
+const CACHE_NAME = 'coompany-richiesta-prodotti-v2';
 
 const ASSETS_TO_CACHE = [
   './',
